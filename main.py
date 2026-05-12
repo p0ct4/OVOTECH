@@ -122,14 +122,19 @@ app = FastAPI(
 
 # CORS: Permite que el navegador hable con el backend
 # desde cualquier origen (útil si usas Live Server en desarrollo)
+origins = [
+    "http://localhost:8000",
+    "http://localhost:5500",
+    "https://lucky-fox-123456.netlify.app",  # ← TU URL DE NETLIFY
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,  # Cambia ["*"] por esto
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 # Servir archivos estáticos (HTML, CSS, JS del frontend)
 # Tu index.html debe estar en la carpeta "static/"
 app.mount("/static", StaticFiles(directory="static"), name="static")
