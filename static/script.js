@@ -1,9 +1,13 @@
-// ============================================================
-// CONFIGURACIÓN FIJA: NUNCA usar window.location (evita Live Server)
-// ============================================================
-const API_BASE = "http://localhost:8000";
-const WS_URL   = "ws://localhost:8000/ws";
+// ============================================
+// CONFIGURACIÓN PARA PRODUCCIÓN
+// ============================================
+const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
+// URL del backend en Render
+const RENDER_URL = 'https://ovotech.onrender.com/';  // ← TU URL DE RENDER
+
+const API_BASE = isLocal ? 'http://localhost:8000' : RENDER_URL;
+const WS_URL = isLocal ? 'ws://localhost:8000/ws' : 'wss://ovotech.onrender.com/ws';
 const connectionEl = document.getElementById('connection');
 const tempValueEl  = document.getElementById('tempValue');
 const tempStatusEl = document.getElementById('tempStatus');
