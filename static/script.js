@@ -1,13 +1,15 @@
 // ============================================
-// CONFIGURACIÓN PARA PRODUCCIÓN
+// CONFIGURACIÓN - Detecta automáticamente local o producción
 // ============================================
 const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-
-// URL del backend en Render
-const RENDER_URL = 'https://ovotech.onrender.com/';  // ← TU URL DE RENDER
+const RENDER_URL = 'https://ovotech.onrender.com'; // ← TU URL DE RENDER (sin barra al final)
 
 const API_BASE = isLocal ? 'http://localhost:8000' : RENDER_URL;
-const WS_URL = isLocal ? 'ws://localhost:8000/ws' : 'wss://ovotech.onrender.com/ws';
+const WS_URL   = isLocal ? 'ws://localhost:8000/ws' : 'wss://ovotech.onrender.com/ws';
+
+// ============================================
+// REFERENCIAS DOM
+// ============================================
 const connectionEl = document.getElementById('connection');
 const tempValueEl  = document.getElementById('tempValue');
 const tempStatusEl = document.getElementById('tempStatus');
@@ -19,9 +21,10 @@ const humBar       = document.querySelector('.hum-bar');
 const MAX_POINTS = 50;
 let tempChart, humChart;
 let ws = null;
-let conectadoWS = false;
 
-// ========== UTILIDADES DE ESTADO ==========
+// ============================================
+// ESTADOS
+// ============================================
 function getTempStatus(temp) {
     if (temp < 36.0 || temp > 39.5) return { text: '¡Peligro!', color: '#e74c3c', barColor: '#e74c3c' };
     if ((temp >= 36.0 && temp < 37.0) || (temp > 38.5 && temp <= 39.5)) return { text: 'Advertencia', color: '#f39c12', barColor: '#f39c12' };
@@ -34,7 +37,9 @@ function getHumStatus(hum) {
     return { text: 'Óptimo', color: '#27ae60', barColor: '#8f94fb' };
 }
 
-// ========== GRÁFICOS ==========
+// ============================================
+// GRÁFICOS
+// ============================================
 function initCharts() {
     const commonOptions = {
         responsive: true, maintainAspectRatio: false,
@@ -77,7 +82,9 @@ function pushChartData(temp, hum, timestamp) {
     humChart.update('none');
 }
 
-// ========== ACTUALIZAR UI ==========
+// ============================================
+// ACTUALIZAR UI
+// ============================================
 function updateUI(data) {
     const t = parseFloat(data.temperatura);
     const h = parseFloat(data.humedad);
@@ -97,18 +104,19 @@ function updateUI(data) {
     pushChartData(t, h, data.timestamp || new Date().toISOString());
 }
 
-// ========== CARGA INICIAL POR HTTP ==========
+// ============================================
+// CARGA INICIAL POR HTTP
+// ============================================
 async function cargarHistorico() {
     try {
         const res = await fetch(`${API_BASE}/api/lecturas?limit=${MAX_POINTS}`);
         if (!res.ok) {
-            console.warn("API no responde (_status:", res.status, ")");
+            console.warn("API no responde (status:", res.status, ")");
             return;
         }
         const json = await res.json();
         if (!json.data || json.data.length === 0) return;
 
-        // Limpiar
         tempChart.data.labels = []; tempChart.data.datasets[0].data = [];
         humChart.data.labels = []; humChart.data.datasets[0].data = [];
 
@@ -126,7 +134,9 @@ async function cargarHistorico() {
     }
 }
 
-// ========== WEBSOCKET ROBUSTO ==========
+// ============================================
+// WEBSOCKET
+// ============================================
 function connectWebSocket() {
     if (ws) { try { ws.close(); } catch(e) {} }
 
@@ -135,27 +145,20 @@ function connectWebSocket() {
 
     ws.onopen = () => {
         console.log("✅ WebSocket conectado");
-        conectadoWS = true;
         connectionEl.innerHTML = '<span class="status-dot active"></span><span>Sistema Conectado</span>';
         connectionEl.classList.remove('alert');
     };
 
     ws.onmessage = (event) => {
-        // Protección: si no es string, ignorar
         if (typeof event.data !== 'string') return;
-        
-        // Si es "pong", ignorar
         if (event.data === "pong") return;
 
         try {
             const msg = JSON.parse(event.data);
             
-            // Mensaje individual en tiempo real
             if (msg.type === 'lectura' && msg.data) {
                 updateUI(msg.data);
             }
-            
-            // Histórico enviado al conectar
             else if (msg.type === 'historico' && Array.isArray(msg.data)) {
                 if (msg.data.length === 0) return;
                 tempChart.data.labels = []; tempChart.data.datasets[0].data = [];
@@ -171,39 +174,27 @@ function connectWebSocket() {
             }
             
         } catch (e) {
-            // Ignoramos silenciosamente los mensajes que no sean JSON válido
-            console.warn("WS mensaje no-JSON recibido (ignorado):", event.data.substring(0, 50));
+            console.warn("WS mensaje no-JSON (ignorado):", event.data.substring(0, 50));
         }
     };
 
     ws.onerror = (err) => {
         console.error("❌ WS Error:", err);
-        conectadoWS = false;
         connectionEl.innerHTML = '<span class="status-dot"></span><span>Error de Conexión</span>';
         connectionEl.classList.add('alert');
     };
 
     ws.onclose = () => {
         console.warn("🔌 WS cerrado. Reintentando en 3s...");
-        conectadoWS = false;
         connectionEl.innerHTML = '<span class="status-dot"></span><span>Desconectado</span>';
         connectionEl.classList.add('alert');
         setTimeout(connectWebSocket, 3000);
     };
 }
-// Detecta si estás en local o en Render
-const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
-const API_BASE = isLocal 
-    ? 'http://localhost:8000' 
-    : window.location.origin;  // En Render, usa el mismo dominio
-
-const WS_URL = isLocal 
-    ? 'ws://localhost:8000/ws' 
-    : 'wss://' + window.location.host + '/ws';  // wss:// en producción HTTPS
-
-// ... resto de tu script.js igual ...
-// ========== INICIO ==========
+// ============================================
+// INICIO
+// ============================================
 document.addEventListener('DOMContentLoaded', () => {
     initCharts();
     cargarHistorico();
