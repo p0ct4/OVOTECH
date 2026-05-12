@@ -8,7 +8,7 @@ load_dotenv()
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql://ovotech_user:ovotech_pass@localhost:5432/ovotech_db"
+    "postgresql://ovotech_user:ovotech_pass@localhost:5432/OVOTECH"
 )
 
 # Pool de conexiones para PostgreSQL (más eficiente)
