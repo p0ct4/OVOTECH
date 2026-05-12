@@ -1,0 +1,222 @@
+
+:root {
+    --bg: #0b0f19;
+    --surface: rgba(255, 255, 255, 0.04);
+    --border: rgba(255, 255, 255, 0.08);
+    --text: #e2e8f0;
+    --text-dim: #94a3b8;
+    --ok: #10b981;
+    --alert: #ef4444;
+    --temp: #f59e0b;
+    --hum: #0ea5e9;
+    --radius: 24px;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+    position: relative;
+}
+
+/* Fondo ambiental */
+.bg-glow {
+    position: fixed;
+    top: -20%;
+    left: -10%;
+    width: 60vw;
+    height: 60vw;
+    background: radial-gradient(circle, rgba(245,158,11,0.12) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+}
+
+.bg-glow::after {
+    content: '';
+    position: fixed;
+    bottom: -20%;
+    right: -10%;
+    width: 60vw;
+    height: 60vw;
+    background: radial-gradient(circle, rgba(14,165,233,0.12) 0%, transparent 70%);
+    pointer-events: none;
+}
+
+.container {
+    position: relative;
+    z-index: 1;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 40px 24px;
+}
+
+/* Header */
+.topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 40px;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+
+.brand {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.logo {
+    font-size: 2.5rem;
+    filter: drop-shadow(0 0 12px rgba(245,158,11,0.4));
+}
+
+.brand h1 {
+    font-size: 1.8rem;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    background: linear-gradient(135deg, #fff 0%, var(--text-dim) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.brand p {
+    font-size: 0.9rem;
+    color: var(--text-dim);
+    margin-top: 2px;
+}
+
+/* Indicador de conexión */
+.status-indicator {
+    padding: 10px 20px;
+    border-radius: 100px;
+    font-weight: 700;
+    font-size: 0.85rem;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    border: 1px solid transparent;
+    transition: all 0.3s ease;
+}
+
+.connected {
+    background: rgba(16, 185, 129, 0.15);
+    color: var(--ok);
+    border-color: rgba(16, 185, 129, 0.3);
+    box-shadow: 0 0 20px rgba(16, 185, 129, 0.15);
+}
+
+.disconnected {
+    background: rgba(107, 114, 128, 0.15);
+    color: var(--text-dim);
+    border-color: rgba(107, 114, 128, 0.3);
+}
+
+/* Métricas */
+.metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 24px;
+    margin-bottom: 32px;
+}
+
+.card {
+    background: var(--surface);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 32px;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+    opacity: 0.5;
+}
+
+.card.ok {
+    border-color: rgba(16, 185, 129, 0.4);
+    box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.1), 0 20px 40px -10px rgba(16, 185, 129, 0.15);
+}
+
+.card.alert {
+    border-color: rgba(239, 68, 68, 0.5);
+    box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.1), 0 20px 40px -10px rgba(239, 68, 68, 0.2);
+    animation: softPulse 2s infinite;
+}
+
+@keyframes softPulse {
+    0%, 100% { box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.1), 0 20px 40px -10px rgba(239, 68, 68, 0.2); }
+    50% { box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.2), 0 25px 50px -10px rgba(239, 68, 68, 0.3); }
+}
+
+.card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.card-header .icon {
+    font-size: 1.2rem;
+}
+
+.card-header .label {
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+}
+
+.value {
+    font-size: 3.5rem;
+    font-weight: 800;
+    letter-spacing: -2px;
+    line-height: 1;
+    margin: 12px 0;
+    font-variant-numeric: tabular-nums;
+}
+
+.temp { color: var(--temp); }
+.hum { color: var(--hum); }
+
+.status-text {
+    font-size: 0.95rem;
+    font-weight: 600;
+    margin-top: 8px;
+    min-height: 24px;
+}
+
+/* Barras decorativas de progreso */
+.progress-track {
+    width: 100%;
+    height: 6px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 10px;
+    margin-top: 20px;
+    overflow: hidden;
+    position: relative;
+}
+
+.progress-bar {
+    height: 100%;
+    width: 0%;
+    border-radius: 10px;
+    transition: width 0.6s ease}

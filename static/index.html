@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🥚 INCUBADORA</title>
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="bg-glow"></div>
+    
+    <div class="container">
+        <header class="topbar">
+            <div class="brand">
+                <span class="logo">🥚</span>
+                <div>
+                    <h1>INCUBADORA</h1>
+                    <p>Monitoreo en tiempo real</p>
+                </div>
+            </div>
+            <div id="connection" class="status-indicator disconnected">Desconectado</div>
+        </header>
+
+        <section class="metrics">
+            <div class="card" id="tempCard">
+                <div class="card-header">
+                    <span class="icon">🌡️</span>
+                    <span class="label">TEMPERATURA</span>
+                </div>
+                <div class="value temp" id="tempValue">--°C</div>
+                <div class="status-text" id="tempStatus">Esperando datos...</div>
+                <div class="progress-track">
+                    <div class="progress-bar temp-bar"></div>
+                </div>
+            </div>
+
+            <div class="card" id="humCard">
+                <div class="card-header">
+                    <span class="icon">💧</span>
+                    <span class="label">HUMEDAD</span>
+                </div>
+                <div class="value hum" id="humValue">--%</div>
+                <div class="status-text" id="humStatus">Esperando datos...</div>
+                <div class="progress-track">
+                    <div class="progress-bar hum-bar"></div>
+                </div>
+            </div>
+        </section>
+
+        <section class="charts">
+            <div class="chart-container">
+                <div class="chart-header">
+                    <h3>Temperatura</h3>
+                    <span class="badge">Últimas 50 lecturas</span>
+                </div>
+                <div class="canvas-wrap">
+                    <canvas id="tempChart"></canvas>
+                </div>
+            </div>
+            <div class="chart-container">
+                <div class="chart-header">
+                    <h3>Humedad</h3>
+                    <span class="badge">Últimas 50 lecturas</span>
+                </div>
+                <div class="canvas-wrap">
+                    <canvas id="humChart"></canvas>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
