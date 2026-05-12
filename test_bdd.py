@@ -1,32 +1,33 @@
-from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import create_engine, text
 import os
 from dotenv import load_dotenv
 
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL")
+url = os.getenv("DATABASE_URL")
 
-if not DATABASE_URL:
-    raise ValueError("❌ No se encontró DATABASE_URL en el archivo .env")
+if not url:
+    print("❌ ERROR: No encontré DATABASE_URL")
+    print("💡 Asegúrate de tener un archivo .env en esta carpeta con:")
+    print('   DATABASE_URL=postgresql://...')
+    exit()
 
-# Configuración para PostgreSQL en la nube (Supabase/Neon)
-# pool_pre_ping verifica que la conexión esté viva antes de usarla
-engine = create_engine(
-    DATABASE_URL,
-    pool_size=5,
-    max_overflow=10,
-    pool_pre_ping=True,
-    pool_recycle=300  # Recicla conexiones cada 5 minutos (evita cortes en la nube)
-)
+# Ocultar password al imprimir
+safe = url.split('@')[1] if '@' in url else "oculto"
+print(f"🔌 Intentando conectar a Neon: postgresql://***@{safe}")
 
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+try:
+    engine = create_engine(url)
+    with engine.connect() as conn:
+        result = conn.execute(text("SELECT version();"))
+        version = result.fetchone()[0]
+        print("✅ ¡CONEXIÓN EXITOSA!")
+        print(f"🗄️  Servidor: {version[:60]}")
+        
+        # Probar crear tabla
+        conn.execute(text("CREATE TABLE IF NOT EXISTS test_table (id SERIAL PRIMARY KEY)"))
+        conn.execute(text("DROP TABLE test_table"))
+        print("✅ Puedes crear tablas. Todo listo.")
+        
+except Exception as e:
+    print(f"❌ Error: {e}")

@@ -187,7 +187,18 @@ function connectWebSocket() {
         setTimeout(connectWebSocket, 3000);
     };
 }
+// Detecta si estás en local o en Render
+const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
+const API_BASE = isLocal 
+    ? 'http://localhost:8000' 
+    : window.location.origin;  // En Render, usa el mismo dominio
+
+const WS_URL = isLocal 
+    ? 'ws://localhost:8000/ws' 
+    : 'wss://' + window.location.host + '/ws';  // wss:// en producción HTTPS
+
+// ... resto de tu script.js igual ...
 // ========== INICIO ==========
 document.addEventListener('DOMContentLoaded', () => {
     initCharts();

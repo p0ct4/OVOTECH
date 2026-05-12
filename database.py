@@ -6,19 +6,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql://ovotech_user:ovotech_pass@localhost:5432/OVOTECH"
-)
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-# Pool de conexiones para PostgreSQL (más eficiente)
-engine = create_engine(
-    DATABASE_URL,
-    pool_size=10,
-    max_overflow=20,
-    pool_pre_ping=True  # Verifica que la conexión esté viva antes de usarla
-)
+if not DATABASE_URL:
+    raise ValueError("❌ DATABASE_URL no está configurada")
 
+engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 

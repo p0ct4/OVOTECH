@@ -21,7 +21,7 @@ class MQTTClient:
         
     def on_connect(self, client, userdata, flags, reason_code, properties):
         if reason_code == 0:
-            print(f"✅ Conectado a HiveMQ ({MQTT_BROKER})")
+            print(f" Conectado a HiveMQ ({MQTT_BROKER})")
             client.subscribe(MQTT_TOPIC)
             print(f"📡 Suscrito al tópico: {MQTT_TOPIC}")
         else:
