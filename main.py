@@ -125,7 +125,7 @@ app = FastAPI(
 origins = [
     "http://localhost:8000",
     "http://localhost:5500",
-    "https://lucky-fox-123456.netlify.app",  # ← TU URL DE NETLIFY
+    "https://ovo-tech.netlify.app/",  # ← TU URL DE NETLIFY
 ]
 
 app.add_middleware(
