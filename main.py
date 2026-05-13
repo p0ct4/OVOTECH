@@ -116,7 +116,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 # ============================================================
 class VinculacionCreate(BaseModel):
     device_id: str
-    nombre_usuario: str = None
+    nombre_usuario: str | None = None  
 
 
 # ============================================================
