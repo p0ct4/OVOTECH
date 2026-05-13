@@ -3,72 +3,110 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🥚 INCUBADORA</title>
-    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <title>OVOTECH - Incubadora Inteligente</title>
     <link rel="stylesheet" href="presentacion.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-    <div class="bg-glow"></div>
-    
-    <div class="container">
-        <header class="topbar">
-            <div class="brand">
-                <span class="logo">🥚</span>
-                <div>
-                    <h1>INCUBADORA</h1>
-                    <p>Monitoreo en tiempo real</p>
-                </div>
+
+    <!-- ==================== PANTALLA VINCULACIÓN ==================== -->
+    <div id="pantalla-vinculacion" class="pantalla">
+        <div class="login-card">
+            <div class="logo">🐣</div>
+            <h1>OVOTECH</h1>
+            <p class="subtitle">Incubadora Inteligente</p>
+            
+            <div class="form-group">
+                <label for="deviceIdInput">ID de tu incubadora</label>
+                <input 
+                    type="text" 
+                    id="deviceIdInput" 
+                    placeholder="ej: winter, lopez, demo-001" 
+                    autocomplete="off"
+                    maxlength="50"
+                >
+                <small>Encontralo en la etiqueta de tu dispositivo</small>
             </div>
-            <div id="connection" class="status-indicator disconnected">Desconectado</div>
+            
+            <button onclick="vincularDispositivo()" class="btn-primary">
+                Conectar
+            </button>
+            
+            <p id="vinculacionMsg" class="msg"></p>
+        </div>
+    </div>
+
+    <!-- ==================== PANTALLA PRINCIPAL ==================== -->
+    <div id="pantalla-principal" class="pantalla" style="display: none;">
+        
+        <header class="topbar">
+            <div class="topbar-left">
+                <h1>🐣 OVOTECH</h1>
+                <span id="miDeviceId" class="device-badge">--</span>
+            </div>
+            <div class="topbar-right">
+                <div id="connection" class="connection-status">
+                    <span class="status-dot"></span>
+                    <span class="status-text">Desconectado</span>
+                </div>
+                <button onclick="desvincularDispositivo()" class="btn-icon" title="Cambiar incubadora">
+                    ↻
+                </button>
+            </div>
         </header>
 
-        <section class="metrics">
-            <div class="card" id="tempCard">
-                <div class="card-header">
-                    <span class="icon">🌡️</span>
-                    <span class="label">TEMPERATURA</span>
+        <main class="dashboard">
+            <!-- Tarjetas -->
+            <div class="cards-grid">
+                <div class="card temp-card">
+                    <div class="card-header">
+                        <span class="card-icon">🌡️</span>
+                        <span class="card-title">Temperatura</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="card-value" id="tempValue">--.-°C</div>
+                        <div class="card-status" id="tempStatus">Esperando datos...</div>
+                    </div>
+                    <div class="progress-track">
+                        <div class="progress-fill temp-bar" style="width: 0%"></div>
+                    </div>
                 </div>
-                <div class="value temp" id="tempValue">--°C</div>
-                <div class="status-text" id="tempStatus">Esperando datos...</div>
-                <div class="progress-track">
-                    <div class="progress-bar temp-bar"></div>
+
+                <div class="card hum-card">
+                    <div class="card-header">
+                        <span class="card-icon">💧</span>
+                        <span class="card-title">Humedad</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="card-value" id="humValue">--.-%</div>
+                        <div class="card-status" id="humStatus">Esperando datos...</div>
+                    </div>
+                    <div class="progress-track">
+                        <div class="progress-fill hum-bar" style="width: 0%"></div>
+                    </div>
                 </div>
             </div>
 
-            <div class="card" id="humCard">
-                <div class="card-header">
-                    <span class="icon">💧</span>
-                    <span class="label">HUMEDAD</span>
+            <!-- Gráficos -->
+            <div class="charts-grid">
+                <div class="chart-box">
+                    <h3>📈 Temperatura (últimas 50 lecturas)</h3>
+                    <div class="chart-canvas">
+                        <canvas id="tempChart"></canvas>
+                    </div>
                 </div>
-                <div class="value hum" id="humValue">--%</div>
-                <div class="status-text" id="humStatus">Esperando datos...</div>
-                <div class="progress-track">
-                    <div class="progress-bar hum-bar"></div>
+                <div class="chart-box">
+                    <h3>📉 Humedad (últimas 50 lecturas)</h3>
+                    <div class="chart-canvas">
+                        <canvas id="humChart"></canvas>
+                    </div>
                 </div>
             </div>
-        </section>
+        </main>
 
-        <section class="charts">
-            <div class="chart-container">
-                <div class="chart-header">
-                    <h3>Temperatura</h3>
-                    <span class="badge">Últimas 50 lecturas</span>
-                </div>
-                <div class="canvas-wrap">
-                    <canvas id="tempChart"></canvas>
-                </div>
-            </div>
-            <div class="chart-container">
-                <div class="chart-header">
-                    <h3>Humedad</h3>
-                    <span class="badge">Últimas 50 lecturas</span>
-                </div>
-                <div class="canvas-wrap">
-                    <canvas id="humChart"></canvas>
-                </div>
-            </div>
-        </section>
+        <footer class="footer">
+            <p>OVOTECH v2.0 • Monitoreo en tiempo real • <span id="footer-device">--</span></p>
+        </footer>
     </div>
 
     <script src="script.js"></script>
