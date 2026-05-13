@@ -266,13 +266,34 @@ async function vincularDispositivo() {
             localStorage.setItem('ovotech_device_id', deviceId);
             vinculacionMsg.innerHTML = '<span style="color:#2ecc71;">✅ ¡Vinculado! Entrando...</span>';
             setTimeout(() => location.reload(), 800);
-        } else {
-            const err = await res.json();
-            vinculacionMsg.innerHTML = `<span style="color:#e74c3c;">❌ Error: ${err.detail || 'Desconocido'}</span>`;
+            return;
         }
 
+        // Si no es ok, intentar leer el error
+        let errorText = '';
+        try {
+            const errData = await res.json();
+            console.error("Error del servidor:", errData);
+            
+            // FastAPI devuelve {detail: "mensaje"} o {detail: [{msg: "..."}]}
+            if (errData.detail) {
+                if (Array.isArray(errData.detail)) {
+                    errorText = errData.detail.map(e => e.msg || JSON.stringify(e)).join(', ');
+                } else {
+                    errorText = String(errData.detail);
+                }
+            } else {
+                errorText = JSON.stringify(errData);
+            }
+        } catch {
+            errorText = `HTTP ${res.status}: ${res.statusText}`;
+        }
+
+        vinculacionMsg.innerHTML = `<span style="color:#e74c3c;">❌ Error: ${errorText}</span>`;
+
     } catch (e) {
-        vinculacionMsg.innerHTML = '<span style="color:#e74c3c;">❌ No se pudo conectar al servidor</span>';
+        console.error(e);
+        vinculacionMsg.innerHTML = '<span style="color:#e74c3c;">❌ No se pudo conectar al servidor. ¿Está corriendo el backend?</span>';
     }
 }
 
