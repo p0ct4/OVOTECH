@@ -128,14 +128,26 @@ async def root():
     return {"message": "OVOTECH API", "docs": "/static/index.html"}
 
 
-# --- Vinculación ---
 @app.post("/api/vincular")
 async def vincular_dispositivo(data: VinculacionCreate, db: Session = Depends(get_db)):
+    # 1. VERIFICAR que la incubadora existe (tenga al menos 1 lectura)
+    existe_lectura = db.query(Lectura).filter(Lectura.device_id == data.device_id).first()
+    if not existe_lectura:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Incubadora '{data.device_id}' no encontrada. Encendela y esperá que envíe datos primero."
+        )
+    
+    # 2. Verificar si ya estaba vinculada
     existente = db.query(Vinculacion).filter(Vinculacion.device_id == data.device_id).first()
     if existente:
         return {"message": "Ya vinculado", "device_id": data.device_id}
     
-    vinculo = Vinculacion(device_id=data.device_id, nombre_usuario=data.nombre_usuario)
+    # 3. Crear vinculación
+    vinculo = Vinculacion(
+        device_id=data.device_id,
+        nombre_usuario=data.nombre_usuario
+    )
     db.add(vinculo)
     db.commit()
     return {"message": "Vinculado correctamente", "device_id": data.device_id}
