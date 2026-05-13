@@ -48,7 +48,19 @@ def process_mqtt_message(payload: dict):
         
         print(f"💾 PostgreSQL: Guardada lectura ID={lectura.id} | "
               f"Temp={lectura.temperatura}°C | Hum={lectura.humedad}%")
-
+  # 2. ROTACIÓN: Mantener solo 50 lecturas
+        total = db.query(Lectura).count()
+        if total > 50:
+            limite = db.query(Lectura.timestamp)\
+                .order_by(Lectura.timestamp.desc())\
+                .offset(50)\
+                .limit(1)\
+                .scalar()
+            if limite:
+                db.query(Lectura).filter(Lectura.timestamp <= limite)\
+                    .delete(synchronize_session=False)
+                db.commit()
+                print(f"🗑️  Rotación: lecturas antiguas eliminadas")
         # Preparar mensaje para los navegadores
         msg = {
             "type": "lectura",
