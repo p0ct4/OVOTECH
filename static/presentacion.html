@@ -3,144 +3,74 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OVOTECH - Innovación en Incubación</title>
-    <link rel="stylesheet" href="presentacion.css">
+    <title>🥚 INCUBADORA</title>
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <!-- Navegación -->
-    <nav class="navbar">
-        <div class="nav-container">
-            <a href="#" class="logo">
-                <span class="logo-icon">🥚</span>
-                <span class="logo-text">OVOTECH</span>
-            </a>
-            <a href="index.html" class="nav-link">Ir al Panel</a>
-        </div>
-    </nav>
-
-    <!-- Hero Section -->
-    <header class="hero">
-        <div class="hero-glow"></div>
-        <div class="hero-content">
-            <span class="badge">Sistema IoT de Monitoreo</span>
-            <h1>OVOTECH</h1>
-            <p class="hero-subtitle">
-                Tecnología de precisión para la incubación del futuro. 
-                Control inteligente de temperatura y humedad en tiempo real.
-            </p>
-            <p class="hero-text">
-                Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor 
-                incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud 
-                exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.
-            </p>
-            <a href="index.html" class="cta-button">
-                <span>📊 Acceder al Dashboard</span>
-            </a>
-        </div>
-        <div class="hero-visual">
-            <div class="egg-device">
-                <div class="egg-inner">
-                    <div class="pulse-ring"></div>
-                    <div class="pulse-ring delay"></div>
-                    <span class="egg-icon">🥚</span>
-                </div>
-                <div class="data-float temp-float">37.5°C</div>
-                <div class="data-float hum-float">55%</div>
-            </div>
-        </div>
-    </header>
-
-    <!-- Características -->
-    <section class="features">
-        <div class="section-header">
-            <h2>¿Qué es OVOTECH?</h2>
-            <p>
-                Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore 
-                eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident.
-            </p>
-        </div>
-
-        <div class="features-grid">
-            <div class="feature-card">
-                <div class="feature-icon">🌡️</div>
-                <h3>Control Térmico</h3>
-                <p>
-                    Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod 
-                    tempor incididunt ut labore et dolore magna aliqua.
-                </p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon">💧</div>
-                <h3>Humedad Precisa</h3>
-                <p>
-                    Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi 
-                    ut aliquip ex ea commodo consequat.
-                </p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon">📡</div>
-                <h3>Conectividad IoT</h3>
-                <p>
-                    Duis aute irure dolor in reprehenderit in voluptate velit esse cillum 
-                    dolore eu fugiat nulla pariatur.
-                </p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon">⚠️</div>
-                <h3>Alertas Inteligentes</h3>
-                <p>
-                    Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia 
-                    deserunt mollit anim id est laborum.
-                </p>
-            </div>
-        </div>
-    </section>
-
-    <!-- Sobre el Proyecto -->
-    <section class="about">
-        <div class="about-container">
-            <div class="about-visual">
-                <div class="about-graphic">
-                    <div class="grid-bg"></div>
-                    <div class="orb orb-1"></div>
-                    <div class="orb orb-2"></div>
+    <div class="bg-glow"></div>
+    
+    <div class="container">
+        <header class="topbar">
+            <div class="brand">
+                <span class="logo">🥚</span>
+                <div>
+                    <h1>INCUBADORA</h1>
+                    <p>Monitoreo en tiempo real</p>
                 </div>
             </div>
-            <div class="about-content">
-                <h2>Sobre el Proyecto</h2>
-                <p>
-                    Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod 
-                    tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, 
-                    quis nostrud exercitation ullamco laboris.
-                </p>
-                <p>
-                    Nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit 
-                    in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint 
-                    occaecat cupidatat non proident.
-                </p>
-                <ul class="about-list">
-                    <li>✓ Monitoreo 24/7 sin interrupciones</li>
-                    <li>✓ Histórico de datos en la nube</li>
-                    <li>✓ Interfaz responsive y moderna</li>
-                    <li>✓ Alertas vía MQTT en tiempo real</li>
-                </ul>
-                <a href="index.html" class="cta-button secondary">
-                    <span>🚀 Ir a la Incubadora</span>
-                </a>
-            </div>
-        </div>
-    </section>
+            <div id="connection" class="status-indicator disconnected">Desconectado</div>
+        </header>
 
-    <!-- Footer -->
-    <footer class="footer">
-        <div class="footer-content">
-            <div class="footer-brand">
-                <span class="logo-icon">🥚</span>
-                <span>OVOTECH</span>
+        <section class="metrics">
+            <div class="card" id="tempCard">
+                <div class="card-header">
+                    <span class="icon">🌡️</span>
+                    <span class="label">TEMPERATURA</span>
+                </div>
+                <div class="value temp" id="tempValue">--°C</div>
+                <div class="status-text" id="tempStatus">Esperando datos...</div>
+                <div class="progress-track">
+                    <div class="progress-bar temp-bar"></div>
+                </div>
             </div>
-            <p>Proyecto de monitoreo IoT para incubadoras.</p>
-            <p class="footer-copy">© 2026 OVOTECH. Todos los derechos reservados.</p>
-        </div>
-    </footer>
+
+            <div class="card" id="humCard">
+                <div class="card-header">
+                    <span class="icon">💧</span>
+                    <span class="label">HUMEDAD</span>
+                </div>
+                <div class="value hum" id="humValue">--%</div>
+                <div class="status-text" id="humStatus">Esperando datos...</div>
+                <div class="progress-track">
+                    <div class="progress-bar hum-bar"></div>
+                </div>
+            </div>
+        </section>
+
+        <section class="charts">
+            <div class="chart-container">
+                <div class="chart-header">
+                    <h3>Temperatura</h3>
+                    <span class="badge">Últimas 50 lecturas</span>
+                </div>
+                <div class="canvas-wrap">
+                    <canvas id="tempChart"></canvas>
+                </div>
+            </div>
+            <div class="chart-container">
+                <div class="chart-header">
+                    <h3>Humedad</h3>
+                    <span class="badge">Últimas 50 lecturas</span>
+                </div>
+                <div class="canvas-wrap">
+                    <canvas id="humChart"></canvas>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <script src="script.js"></script>
 </body>
 </html>
