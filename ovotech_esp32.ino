@@ -1,23 +1,35 @@
 /*
   OVOTECH - Firmware ESP32
   Compatible con: FastAPI + PostgreSQL (Neon) + HiveMQ + WebSocket
+  Sensores: DS18B20 (sonda temperatura) + BME280 (humedad por I2C)
   Autor: OVOTECH
-  Versión: 2.0
+  Versión: 2.1
 */
 
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
-#include <DHT.h>
 #include <Preferences.h>
+#include <Wire.h>
+#include <Adafruit_BME280.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
 
 // ============================================
 // CONFIGURACIÓN DE PINES Y SENSORES
 // ============================================
-#define DHT_PIN 4
-#define DHT_TYPE DHT22  // Cambiar a DHT11 si usás ese
+// Sonda DS18B20 (1-Wire) — cable DATA al pin indicado + resistencia 4.7k a 3.3V
+#define DS18B20_PIN 4
 
-DHT dht(DHT_PIN, DHT_TYPE);
+// BME280 (I2C) — en ESP32 suele ser SDA=21, SCL=22
+#define I2C_SDA 21
+#define I2C_SCL 22
+// Dirección I2C: 0x76 o 0x77 según el módulo (probar la otra si falla begin)
+#define BME280_ADDRESS 0x76
+
+OneWire oneWire(DS18B20_PIN);
+DallasTemperature ds18b20(&oneWire);
+Adafruit_BME280 bme;
 
 // ============================================
 // CONFIGURACIÓN MQTT (HiveMQ - Público)
@@ -32,13 +44,77 @@ const char* MQTT_TOPIC = "ovotech/sensor";
 WiFiClient wifiClient;
 PubSubClient mqttClient(wifiClient);
 
-String DEVICE_ID;           // ID único permanente (MAC address)
-String wifiSSID = "";       // Guardado en flash
-String wifiPassword = "";   // Guardado en flash
+String DEVICE_ID;
+String wifiSSID = "";
+String wifiPassword = "";
 
 unsigned long lastReconnectAttempt = 0;
 unsigned long lastSensorRead = 0;
-const unsigned long SENSOR_INTERVAL = 3000;  // 3 segundos entre lecturas
+const unsigned long SENSOR_INTERVAL = 3000;
+
+bool sensorDs18Ok = false;
+bool sensorBmeOk = false;
+
+// ============================================
+// INICIALIZAR SENSORES
+// ============================================
+bool initSensores() {
+  sensorDs18Ok = false;
+  sensorBmeOk = false;
+
+  ds18b20.begin();
+  int count = ds18b20.getDeviceCount();
+  if (count > 0) {
+    sensorDs18Ok = true;
+    Serial.print("✅ DS18B20 detectado (");
+    Serial.print(count);
+    Serial.println(" dispositivo(s))");
+  } else {
+    Serial.println("❌ No se detectó la sonda DS18B20 en el pin " + String(DS18B20_PIN));
+  }
+
+  Wire.begin(I2C_SDA, I2C_SCL);
+  if (bme.begin(BME280_ADDRESS, &Wire)) {
+    sensorBmeOk = true;
+    // Configuración recomendada para incubadora (lecturas estables)
+    bme.setSampling(Adafruit_BME280::MODE_NORMAL,
+                    Adafruit_BME280::SAMPLING_X2,
+                    Adafruit_BME280::SAMPLING_X16,
+                    Adafruit_BME280::SAMPLING_X1,
+                    Adafruit_BME280::FILTER_X16,
+                    Adafruit_BME280::STANDBY_MS_500);
+    Serial.println("✅ BME280 inicializado (humedad)");
+  } else if (bme.begin(0x77, &Wire)) {
+    sensorBmeOk = true;
+    Serial.println("✅ BME280 en dirección 0x77 (cambiá BME280_ADDRESS a 0x77 en el código)");
+  } else {
+    Serial.println("❌ BME280 no responde (revisá SDA/SCL y dirección 0x76/0x77)");
+  }
+
+  return sensorDs18Ok && sensorBmeOk;
+}
+
+float leerTemperaturaSonda() {
+  if (!sensorDs18Ok) return NAN;
+
+  ds18b20.requestTemperatures();
+  float temp = ds18b20.getTempCByIndex(0);
+
+  if (temp == DEVICE_DISCONNECTED_C || temp == -127.0) {
+    return NAN;
+  }
+  return temp;
+}
+
+float leerHumedadBme() {
+  if (!sensorBmeOk) return NAN;
+
+  float hum = bme.readHumidity();
+  if (isnan(hum) || hum < 0.0 || hum > 100.0) {
+    return NAN;
+  }
+  return hum;
+}
 
 // ============================================
 // 1. OBTENER ID PERMANENTE DESDE MAC ADDRESS
@@ -46,11 +122,10 @@ const unsigned long SENSOR_INTERVAL = 3000;  // 3 segundos entre lecturas
 String getDeviceId() {
   uint8_t mac[6];
   WiFi.macAddress(mac);
-  
-  // Formato: ovotech-A4CF12 (últimos 3 bytes de la MAC)
+
   char deviceId[20];
   sprintf(deviceId, "ovotech-%02X%02X%02X", mac[3], mac[4], mac[5]);
-  
+
   return String(deviceId);
 }
 
@@ -72,7 +147,7 @@ bool loadCredentials() {
   wifiSSID = prefs.getString("ssid", "");
   wifiPassword = prefs.getString("pass", "");
   prefs.end();
-  
+
   if (wifiSSID.length() > 0) {
     Serial.println("📂 Credenciales cargadas desde flash");
     return true;
@@ -84,10 +159,10 @@ bool loadCredentials() {
 // 3. MODO AP - CONFIGURACIÓN INICIAL
 // ============================================
 void setupAccessPoint() {
-  String apName = "OVOTECH-" + DEVICE_ID.substring(8);  // ovotech-A4CF12 → A4CF12
-  
-  WiFi.softAP(apName.c_str(), "12345678");  // AP sin contraseña o con pass simple
-  
+  String apName = "OVOTECH-" + DEVICE_ID.substring(8);
+
+  WiFi.softAP(apName.c_str(), "12345678");
+
   IPAddress IP = WiFi.softAPIP();
   Serial.println("\n📡 Modo Configuración activado");
   Serial.print("🔗 Conectate a la red: ");
@@ -95,7 +170,6 @@ void setupAccessPoint() {
   Serial.print("🌐 Abrí en tu celular: http://");
   Serial.println(IP);
 
-  // Servidor web simple para recibir credenciales
   WiFiServer server(80);
   server.begin();
 
@@ -105,7 +179,6 @@ void setupAccessPoint() {
       String request = client.readStringUntil('\r');
       Serial.println("📥 " + request);
 
-      // Parsear /config?ssid=MI_WIFI&pass=MI_PASS
       if (request.indexOf("/config?") >= 0) {
         int ssidStart = request.indexOf("ssid=") + 5;
         int ssidEnd = request.indexOf("&", ssidStart);
@@ -115,7 +188,6 @@ void setupAccessPoint() {
         String newSSID = request.substring(ssidStart, ssidEnd);
         String newPASS = request.substring(passStart, passEnd);
 
-        // Decodificar URL básico (reemplazar + por espacio)
         newSSID.replace("+", " ");
         newPASS.replace("+", " ");
 
@@ -128,10 +200,9 @@ void setupAccessPoint() {
         client.stop();
 
         delay(1000);
-        ESP.restart();  // Reiniciar y conectar al WiFi normal
+        ESP.restart();
       }
 
-      // Página de configuración
       client.println("HTTP/1.1 200 OK");
       client.println("Content-Type: text/html");
       client.println();
@@ -151,6 +222,7 @@ void setupAccessPoint() {
       client.println("<button type='submit'>Guardar y Conectar</button>");
       client.println("</form>");
       client.println("<p><small>ID de tu incubadora: <b>" + DEVICE_ID + "</b></small></p>");
+      client.println("<p><small>Sensores: DS18B20 (temp) + BME280 (humedad)</small></p>");
       client.println("</body></html>");
       client.stop();
     }
@@ -194,46 +266,46 @@ bool connectToWiFi() {
 // 5. MQTT - CALLBACKS Y RECONEXIÓN
 // ============================================
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
-  // Por ahora no recibimos comandos del backend
+  // Reservado para comandos futuros
 }
 
 bool connectMQTT() {
   String clientId = "esp32-" + DEVICE_ID + "-" + String(random(0xffff), HEX);
-  
+
   if (mqttClient.connect(clientId.c_str())) {
     Serial.println("✅ Conectado a HiveMQ");
-    mqttClient.subscribe("ovotech/comandos");  // Para futuro: recibir comandos
+    mqttClient.subscribe("ovotech/comandos");
     return true;
   }
   return false;
 }
 
 // ============================================
-// 6. LECTURA DE SENSOR Y ENVÍO
+// 6. LECTURA DE SENSORES Y ENVÍO MQTT
 // ============================================
 void readAndSend() {
-  // Leer DHT
-  float temperatura = dht.readTemperature();
-  float humedad = dht.readHumidity();
+  float temperatura = leerTemperaturaSonda();
+  float humedad = leerHumedadBme();
 
-  // Validar lectura
-  if (isnan(temperatura) || isnan(humedad)) {
-    Serial.println("⚠️ Error leyendo DHT");
+  if (isnan(temperatura)) {
+    Serial.println("⚠️ Error leyendo sonda DS18B20");
+    return;
+  }
+  if (isnan(humedad)) {
+    Serial.println("⚠️ Error leyendo BME280 (humedad)");
     return;
   }
 
-  // Crear JSON exactamente como espera el backend
   StaticJsonDocument<256> doc;
-  doc["temperatura"] = round(temperatura * 10) / 10.0;  // 1 decimal
+  doc["temperatura"] = round(temperatura * 10) / 10.0;
   doc["humedad"] = round(humedad * 10) / 10.0;
   doc["device_id"] = DEVICE_ID;
 
   char buffer[256];
-  size_t n = serializeJson(doc, buffer);
+  serializeJson(doc, buffer);
 
-  // Publicar
   bool enviado = mqttClient.publish(MQTT_TOPIC, buffer);
-  
+
   if (enviado) {
     Serial.print("📤 Enviado: ");
     Serial.println(buffer);
@@ -248,25 +320,25 @@ void readAndSend() {
 void setup() {
   Serial.begin(115200);
   delay(1000);
-  
+
   Serial.println("\n╔════════════════════════════╗");
-  Serial.println("║     🐣 OVOTECH v2.0      ║");
-  Serial.println("║   Incubadora Inteligente   ║");
+  Serial.println("║     🐣 OVOTECH v2.1      ║");
+  Serial.println("║   DS18B20 + BME280         ║");
   Serial.println("╚════════════════════════════╝");
 
-  // Inicializar sensor
-  dht.begin();
-
-  // Obtener ID permanente
   DEVICE_ID = getDeviceId();
   Serial.print("📛 Device ID: ");
   Serial.println(DEVICE_ID);
   Serial.println("   (Este ID nunca cambia. Escribilo en la web para vincular)");
 
-  // Conectar WiFi
-  if (!connectToWiFi()) return;  // Si no hay WiFi, entra en modo AP
+  if (!initSensores()) {
+    Serial.println("⚠️ Revisá cableado antes de continuar:");
+    Serial.println("   DS18B20 DATA → GPIO " + String(DS18B20_PIN) + " (+ pull-up 4.7k)");
+    Serial.println("   BME280 SDA → GPIO " + String(I2C_SDA) + ", SCL → GPIO " + String(I2C_SCL));
+  }
 
-  // Configurar MQTT
+  if (!connectToWiFi()) return;
+
   mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
   mqttClient.setCallback(mqttCallback);
 }
@@ -275,7 +347,6 @@ void setup() {
 // 8. LOOP PRINCIPAL
 // ============================================
 void loop() {
-  // Reconectar MQTT si se cayó
   if (!mqttClient.connected()) {
     unsigned long now = millis();
     if (now - lastReconnectAttempt > 5000) {
@@ -289,7 +360,6 @@ void loop() {
     mqttClient.loop();
   }
 
-  // Reconectar WiFi si se cayó
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("🔌 WiFi desconectado. Reconectando...");
     WiFi.reconnect();
@@ -297,7 +367,6 @@ void loop() {
     return;
   }
 
-  // Leer y enviar sensor cada 3 segundos
   unsigned long now = millis();
   if (now - lastSensorRead >= SENSOR_INTERVAL) {
     lastSensorRead = now;

@@ -1,6 +1,6 @@
 # OVOTECH — Incubadora inteligente (IoT)
 
-Sistema de monitoreo en tiempo real de **temperatura** y **humedad** para incubadoras de huevos. Los datos salen de un **ESP32** con sensor DHT, viajan por **MQTT**, se persisten en **PostgreSQL** y se muestran en un **dashboard web** con gráficos y alertas por rangos.
+Sistema de monitoreo en tiempo real de **temperatura** y **humedad** para incubadoras de huevos. Los datos salen de un **ESP32** con **sonda DS18B20** (temperatura) y **BME280** (humedad), viajan por **MQTT**, se persisten en **PostgreSQL** y se muestran en un **dashboard web** con gráficos y alertas por rangos.
 
 ---
 
@@ -8,7 +8,7 @@ Sistema de monitoreo en tiempo real de **temperatura** y **humedad** para incuba
 
 ```mermaid
 flowchart LR
-    ESP32[ESP32 + DHT22] -->|JSON cada ~3 s| MQTT[HiveMQ]
+    ESP32[ESP32 + DS18B20 + BME280] -->|JSON cada ~3 s| MQTT[HiveMQ]
     SIM[simulador_esp32.py] --> MQTT
     MQTT -->|topic ovotech/sensor| API[FastAPI]
     API --> DB[(PostgreSQL / Neon)]
@@ -18,7 +18,7 @@ flowchart LR
 
 | Componente | Tecnología | Rol |
 |------------|------------|-----|
-| Hardware | ESP32, DHT22, Arduino | Lee sensores, WiFi, publica MQTT |
+| Hardware | ESP32, DS18B20, BME280, Arduino | Lee sensores, WiFi, publica MQTT |
 | Mensajería | HiveMQ (broker público) | Canal entre dispositivos y API |
 | Backend | FastAPI, Uvicorn, SQLAlchemy | Recibe MQTT, guarda datos, WebSocket |
 | Base de datos | PostgreSQL (Neon) | Histórico y vinculaciones |
@@ -57,7 +57,7 @@ flowchart LR
 
 - **Python** 3.10 o superior  
 - **PostgreSQL** (recomendado: [Neon](https://neon.tech) — plan gratuito)  
-- Para hardware: **ESP32**, sensor **DHT22** (o DHT11), Arduino IDE con librerías WiFi, PubSubClient, ArduinoJson, DHT  
+- Para hardware: **ESP32**, **sonda DS18B20**, módulo **BME280** (I2C), Arduino IDE con librerías indicadas en la sección firmware  
 - Opcional: cuenta en **Render** (API) y **Netlify** (frontend estático)
 
 ---
@@ -131,10 +131,22 @@ Luego en el dashboard ingresá ese mismo ID para vincular. **Importante:** la in
 
 ## Firmware ESP32
 
+Sensores usados:
+
+| Sensor | Función | Conexión |
+|--------|---------|----------|
+| **DS18B20** | Temperatura (sonda) | 1-Wire en GPIO **4** (DATA), VCC 3.3V, GND, pull-up **4.7 kΩ** entre DATA y 3.3V |
+| **BME280** | Humedad | I2C: **SDA → GPIO 21**, **SCL → GPIO 22**, VCC 3.3V, GND |
+
 1. Abrí `ovotech_esp32.ino` en Arduino IDE.  
-2. Instalá las librerías: **DHT sensor library**, **PubSubClient**, **ArduinoJson**, **Preferences** (incluida en el core ESP32).  
-3. Ajustá `DHT_TYPE` si usás DHT11 en lugar de DHT22.  
-4. Flasheá el ESP32.
+2. Instalá las librerías (Gestor de librerías):
+   - **PubSubClient**
+   - **ArduinoJson**
+   - **Adafruit BME280 Library** (instala también **Adafruit Unified Sensor** si te lo pide)
+   - **OneWire**
+   - **DallasTemperature**
+3. Si el BME280 no inicia, cambiá `BME280_ADDRESS` de `0x76` a `0x77` en el `.ino`.  
+4. Flasheá el ESP32 y abrí el monitor serie a **115200** baud.
 
 ### Primer arranque (WiFi)
 
@@ -266,7 +278,8 @@ Plantilla completa: [`.env.example`](.env.example).
 | Dashboard sin datos en vivo | API corriendo, MQTT conectado (logs `✅ Conectado a HiveMQ`), mismo `device_id` |
 | WebSocket desconectado en Render | Plan free puede “dormir” el servicio; esperá ~30 s y recargá |
 | CORS bloqueado | Tu origen debe estar en `origins` de `main.py` |
-| DHT devuelve NaN | Cableado, pin `DHT_PIN`, tipo DHT11 vs DHT22 |
+| Error DS18B20 | DATA en GPIO 4, pull-up 4.7k, sonda bien alimentada (3.3V) |
+| Error BME280 | SDA/SCL en 21/22, dirección I2C 0x76 u 0x77 |
 
 ---
 
