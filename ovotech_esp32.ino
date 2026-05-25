@@ -214,7 +214,7 @@ void setupAccessPoint() {
       client.println("input{padding:12px;margin:8px;width:80%;border-radius:8px;border:none;font-size:16px}");
       client.println("button{padding:12px 24px;background:#4e54c8;color:#fff;border:none;border-radius:8px;font-size:16px;cursor:pointer}");
       client.println("</style></head><body>");
-      client.println("<h1>🐣 OVOTECH</h1>");
+      client.println("<h1> OVOTECH</h1>");
       client.println("<p>Configurá tu WiFi</p>");
       client.println("<form action='/config' method='GET'>");
       client.println("<input type='text' name='ssid' placeholder='Nombre de tu WiFi' required><br>");
