@@ -1,9 +1,9 @@
 /*
   OVOTECH - Firmware ESP32
   Compatible con: FastAPI + PostgreSQL (Neon) + HiveMQ + WebSocket
-  Sensores: DS18B20 (sonda temperatura) + BME280 (humedad por I2C)
+  Sensores: BME280 (temperatura + humedad por I2C)
   Autor: OVOTECH
-  Versión: 2.1
+  Versión: 2.2
 */
 
 #include <WiFi.h>
@@ -12,23 +12,16 @@
 #include <Preferences.h>
 #include <Wire.h>
 #include <Adafruit_BME280.h>
-#include <OneWire.h>
-#include <DallasTemperature.h>
 
 // ============================================
 // CONFIGURACIÓN DE PINES Y SENSORES
 // ============================================
-// Sonda DS18B20 (1-Wire) — cable DATA al pin indicado + resistencia 4.7k a 3.3V
-#define DS18B20_PIN 4
-
 // BME280 (I2C) — en ESP32 suele ser SDA=21, SCL=22
 #define I2C_SDA 21
 #define I2C_SCL 22
 // Dirección I2C: 0x76 o 0x77 según el módulo (probar la otra si falla begin)
 #define BME280_ADDRESS 0x76
 
-OneWire oneWire(DS18B20_PIN);
-DallasTemperature ds18b20(&oneWire);
 Adafruit_BME280 bme;
 
 // ============================================
@@ -52,26 +45,13 @@ unsigned long lastReconnectAttempt = 0;
 unsigned long lastSensorRead = 0;
 const unsigned long SENSOR_INTERVAL = 3000;
 
-bool sensorDs18Ok = false;
 bool sensorBmeOk = false;
 
 // ============================================
 // INICIALIZAR SENSORES
 // ============================================
 bool initSensores() {
-  sensorDs18Ok = false;
   sensorBmeOk = false;
-
-  ds18b20.begin();
-  int count = ds18b20.getDeviceCount();
-  if (count > 0) {
-    sensorDs18Ok = true;
-    Serial.print("✅ DS18B20 detectado (");
-    Serial.print(count);
-    Serial.println(" dispositivo(s))");
-  } else {
-    Serial.println("❌ No se detectó la sonda DS18B20 en el pin " + String(DS18B20_PIN));
-  }
 
   Wire.begin(I2C_SDA, I2C_SCL);
   if (bme.begin(BME280_ADDRESS, &Wire)) {
@@ -83,7 +63,7 @@ bool initSensores() {
                     Adafruit_BME280::SAMPLING_X1,
                     Adafruit_BME280::FILTER_X16,
                     Adafruit_BME280::STANDBY_MS_500);
-    Serial.println("✅ BME280 inicializado (humedad)");
+    Serial.println("✅ BME280 inicializado (temperatura + humedad)");
   } else if (bme.begin(0x77, &Wire)) {
     sensorBmeOk = true;
     Serial.println("✅ BME280 en dirección 0x77 (cambiá BME280_ADDRESS a 0x77 en el código)");
@@ -91,16 +71,14 @@ bool initSensores() {
     Serial.println("❌ BME280 no responde (revisá SDA/SCL y dirección 0x76/0x77)");
   }
 
-  return sensorDs18Ok && sensorBmeOk;
+  return sensorBmeOk;
 }
 
-float leerTemperaturaSonda() {
-  if (!sensorDs18Ok) return NAN;
+float leerTemperaturaBme() {
+  if (!sensorBmeOk) return NAN;
 
-  ds18b20.requestTemperatures();
-  float temp = ds18b20.getTempCByIndex(0);
-
-  if (temp == DEVICE_DISCONNECTED_C || temp == -127.0) {
+  float temp = bme.readTemperature();
+  if (isnan(temp) || temp < -40.0 || temp > 85.0) {
     return NAN;
   }
   return temp;
@@ -222,7 +200,7 @@ void setupAccessPoint() {
       client.println("<button type='submit'>Guardar y Conectar</button>");
       client.println("</form>");
       client.println("<p><small>ID de tu incubadora: <b>" + DEVICE_ID + "</b></small></p>");
-      client.println("<p><small>Sensores: DS18B20 (temp) + BME280 (humedad)</small></p>");
+      client.println("<p><small>Sensor: BME280 (temp + humedad)</small></p>");
       client.println("</body></html>");
       client.stop();
     }
@@ -284,15 +262,15 @@ bool connectMQTT() {
 // 6. LECTURA DE SENSORES Y ENVÍO MQTT
 // ============================================
 void readAndSend() {
-  float temperatura = leerTemperaturaSonda();
+  float temperatura = leerTemperaturaBme();
   float humedad = leerHumedadBme();
 
   if (isnan(temperatura)) {
-    Serial.println("⚠️ Error leyendo sonda DS18B20");
+    Serial.println("⚠️ Error leyendo temperatura del BME280");
     return;
   }
   if (isnan(humedad)) {
-    Serial.println("⚠️ Error leyendo BME280 (humedad)");
+    Serial.println("⚠️ Error leyendo humedad del BME280");
     return;
   }
 
@@ -322,8 +300,8 @@ void setup() {
   delay(1000);
 
   Serial.println("\n╔════════════════════════════╗");
-  Serial.println("║     🐣 OVOTECH v2.1      ║");
-  Serial.println("║   DS18B20 + BME280         ║");
+  Serial.println("║     🐣 OVOTECH v2.2      ║");
+  Serial.println("║        BME280              ║");
   Serial.println("╚════════════════════════════╝");
 
   DEVICE_ID = getDeviceId();
@@ -333,7 +311,6 @@ void setup() {
 
   if (!initSensores()) {
     Serial.println("⚠️ Revisá cableado antes de continuar:");
-    Serial.println("   DS18B20 DATA → GPIO " + String(DS18B20_PIN) + " (+ pull-up 4.7k)");
     Serial.println("   BME280 SDA → GPIO " + String(I2C_SDA) + ", SCL → GPIO " + String(I2C_SCL));
   }
 
