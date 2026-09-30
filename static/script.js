@@ -10,10 +10,15 @@ const WS_URL   = isLocal ? 'ws://localhost:8000/ws' : 'wss://ovotech.onrender.co
 // ============================================
 // ESTADO GLOBAL
 // ============================================
-let MI_DEVICE_ID = localStorage.getItem('ovotech_device_id');
+const normId = s => String(s || '').trim().toLowerCase();
+
+let MI_DEVICE_ID = normId(localStorage.getItem('ovotech_device_id')) || null;
 let tempChart = null;
 let humChart  = null;
 let ws = null;
+let wsTimer = null;
+let pollTimer = null;
+let ultimoId = null;   // último id de lectura mostrado (evita duplicados WS + polling)
 const MAX_POINTS = 50;
 
 // ============================================
@@ -118,8 +123,15 @@ function pushChartData(temp, hum, timestamp) {
 
 // ============================================
 // ACTUALIZAR UI
+// pushToChart=false se usa al cargar histórico (los puntos ya están en el gráfico)
 // ============================================
-function updateUI(data) {
+function updateUI(data, pushToChart = true) {
+    // Evita procesar dos veces la misma lectura (WebSocket + polling)
+    if (data.id !== undefined && data.id !== null) {
+        if (data.id === ultimoId) return;
+        ultimoId = data.id;
+    }
+
     const t = parseFloat(data.temperatura);
     const h = parseFloat(data.humedad);
 
@@ -135,7 +147,7 @@ function updateUI(data) {
     humStatusEl.style.color = sh.color;
     if (humBar) { humBar.style.width = Math.min(Math.max(h, 0), 100) + '%'; humBar.style.backgroundColor = sh.barColor; }
 
-    pushChartData(t, h, data.timestamp || new Date().toISOString());
+    if (pushToChart) pushChartData(t, h, data.timestamp || new Date().toISOString());
 }
 
 // ============================================
@@ -170,7 +182,7 @@ async function cargarHistorico() {
 
         tempChart.update();
         humChart.update();
-        updateUI(json.data[json.data.length - 1]);
+        updateUI(json.data[json.data.length - 1], false);
 
     } catch (e) {
         console.error("Error cargando histórico:", e);
@@ -178,10 +190,26 @@ async function cargarHistorico() {
 }
 
 // ============================================
+// POLLING DE RESPALDO (si el WebSocket cae o Render recién despertó)
+// ============================================
+async function pollUltima() {
+    if (!MI_DEVICE_ID) return;
+    try {
+        const res = await fetch(`${API_BASE}/api/lecturas/ultima/${MI_DEVICE_ID}`);
+        if (res.ok) updateUI(await res.json());
+    } catch (e) { /* silencioso: se reintenta en el próximo ciclo */ }
+}
+
+// ============================================
 // WEBSOCKET - Conexión y filtrado por device_id
 // ============================================
 function connectWebSocket() {
-    if (ws) { try { ws.close(); } catch (e) {} }
+    clearTimeout(wsTimer);
+    if (ws) {
+        // Quitar handlers antes de cerrar para no disparar reconexiones duplicadas
+        ws.onclose = null; ws.onerror = null; ws.onmessage = null; ws.onopen = null;
+        try { ws.close(); } catch (e) {}
+    }
 
     console.log("🔌 Intentando WS en", WS_URL);
     ws = new WebSocket(WS_URL);
@@ -201,12 +229,12 @@ function connectWebSocket() {
 
             // FILTRAR: solo procesar si es de MI incubadora
             if (msg.type === 'lectura' && msg.data) {
-                if (msg.data.device_id !== MI_DEVICE_ID) return; // Ignorar otras incubadoras
+                if (normId(msg.data.device_id) !== MI_DEVICE_ID) return; // Ignorar otras incubadoras
                 updateUI(msg.data);
             }
             else if (msg.type === 'historico' && Array.isArray(msg.data)) {
                 // Filtrar el histórico por si acaso
-                const filtrado = msg.data.filter(l => l.device_id === MI_DEVICE_ID);
+                const filtrado = msg.data.filter(l => normId(l.device_id) === MI_DEVICE_ID);
                 if (filtrado.length === 0) return;
 
                 tempChart.data.labels = []; tempChart.data.datasets[0].data = [];
@@ -221,7 +249,7 @@ function connectWebSocket() {
                 });
 
                 tempChart.update(); humChart.update();
-                updateUI(filtrado[filtrado.length - 1]);
+                updateUI(filtrado[filtrado.length - 1], false);
             }
 
         } catch (e) {
@@ -239,7 +267,7 @@ function connectWebSocket() {
         console.warn("🔌 WS cerrado. Reintentando en 3s...");
         connectionEl.innerHTML = '<span class="status-dot"></span><span>Desconectado</span>';
         connectionEl.classList.add('alert');
-        setTimeout(connectWebSocket, 3000);
+        wsTimer = setTimeout(connectWebSocket, 3000);
     };
 }
 
@@ -247,7 +275,7 @@ function connectWebSocket() {
 // VINCULACIÓN DE DISPOSITIVO
 // ============================================
 async function vincularDispositivo() {
-    const deviceId = deviceIdInput.value.trim().toLowerCase();
+    const deviceId = normId(deviceIdInput.value);
     if (!deviceId) {
         vinculacionMsg.innerHTML = '<span style="color:#e74c3c;">❌ Ingresa un ID</span>';
         return;
@@ -274,7 +302,7 @@ async function vincularDispositivo() {
         try {
             const errData = await res.json();
             console.error("Error del servidor:", errData);
-            
+
             // FastAPI devuelve {detail: "mensaje"} o {detail: [{msg: "..."}]}
             if (errData.detail) {
                 if (Array.isArray(errData.detail)) {
@@ -308,7 +336,7 @@ function desvincularDispositivo() {
 // ============================================
 function iniciarDashboard() {
     console.log("🚀 Dashboard iniciado para:", MI_DEVICE_ID);
-    
+
     // Mostrar ID en algún lugar (opcional, si tenés un elemento con id="miDeviceId")
     const miDeviceEl = document.getElementById('miDeviceId');
     if (miDeviceEl) miDeviceEl.innerText = MI_DEVICE_ID;
@@ -316,6 +344,17 @@ function iniciarDashboard() {
     initCharts();
     cargarHistorico();
     connectWebSocket();
+
+    // Respaldo por polling cada 5 s
+    clearInterval(pollTimer);
+    pollTimer = setInterval(pollUltima, 5000);
+
+    // Al volver a la pestaña: refrescar y reconectar el WS si hace falta
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) return;
+        pollUltima();
+        if (!ws || ws.readyState !== WebSocket.OPEN) connectWebSocket();
+    });
 }
 
 // ============================================
