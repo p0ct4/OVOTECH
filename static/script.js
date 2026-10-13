@@ -1,8 +1,4 @@
 
-// ==========================================
-// OVOTECH - JavaScript simplificado
-// ==========================================
-
 // Configuración del servidor
 const isLocal =
     window.location.hostname === "localhost" ||
