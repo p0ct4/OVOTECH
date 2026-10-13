@@ -1,380 +1,460 @@
-// ============================================
-// CONFIGURACIÓN - Render / Local
-// ============================================
-const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-const RENDER_URL = 'https://ovotech.onrender.com';
 
-const API_BASE = isLocal ? 'http://localhost:8000' : RENDER_URL;
-const WS_URL   = isLocal ? 'ws://localhost:8000/ws' : 'wss://ovotech.onrender.com/ws';
+// ==========================================
+// OVOTECH - JavaScript simplificado
+// ==========================================
 
-// ============================================
-// ESTADO GLOBAL
-// ============================================
-const normId = s => String(s || '').trim().toLowerCase();
+// Configuración del servidor
+const isLocal =
+    window.location.hostname === "localhost" ||
+    window.location.hostname === "127.0.0.1";
 
-let MI_DEVICE_ID = normId(localStorage.getItem('ovotech_device_id')) || null;
-let tempChart = null;
-let humChart  = null;
+const API_BASE = isLocal
+    ? "http://localhost:8000"
+    : "https://ovotech.onrender.com";
+
+const WS_URL = isLocal
+    ? "ws://localhost:8000/ws"
+    : "wss://ovotech.onrender.com/ws";
+
+
+// Variables principales
+const normalizarId = id => String(id || "").trim().toLowerCase();
+
+let deviceId = normalizarId(localStorage.getItem("ovotech_device_id"));
 let ws = null;
-let wsTimer = null;
+let reconnectTimer = null;
 let pollTimer = null;
-let ultimoId = null;   // último id de lectura mostrado (evita duplicados WS + polling)
-const MAX_POINTS = 50;
+let ultimoId = null;
 
-// ============================================
-// REFERENCIAS DOM
-// ============================================
-const pantallaVinculacion = document.getElementById('pantalla-vinculacion');
-const pantallaPrincipal   = document.getElementById('pantalla-principal');
-const deviceIdInput       = document.getElementById('deviceIdInput');
-const vinculacionMsg      = document.getElementById('vinculacionMsg');
-const connectionEl        = document.getElementById('connection');
-const tempValueEl         = document.getElementById('tempValue');
-const tempStatusEl        = document.getElementById('tempStatus');
-const humValueEl          = document.getElementById('humValue');
-const humStatusEl         = document.getElementById('humStatus');
-const tempBar             = document.querySelector('.temp-bar');
-const humBar              = document.querySelector('.hum-bar');
 
-// ============================================
-// UTILIDADES - Estados de temperatura/humedad
-// ============================================
-function getTempStatus(temp) {
-    if (temp < 36.0 || temp > 39.5) return { text: '¡Peligro!', color: '#e74c3c', barColor: '#e74c3c' };
-    if ((temp >= 36.0 && temp < 37.0) || (temp > 38.5 && temp <= 39.5)) return { text: 'Advertencia', color: '#f39c12', barColor: '#f39c12' };
-    return { text: 'Óptimo', color: '#27ae60', barColor: '#4e54c8' };
+// Elementos del HTML
+const pantallaVinculacion = document.getElementById("pantalla-vinculacion");
+const pantallaPrincipal = document.getElementById("pantalla-principal");
+
+const deviceIdInput = document.getElementById("deviceIdInput");
+const vinculacionMsg = document.getElementById("vinculacionMsg");
+
+const connection = document.getElementById("connection");
+
+const tempValue = document.getElementById("tempValue");
+const tempStatus = document.getElementById("tempStatus");
+
+const humValue = document.getElementById("humValue");
+const humStatus = document.getElementById("humStatus");
+
+
+// ==========================================
+// ESTADO DE CONEXIÓN
+// ==========================================
+
+function mostrarConexion(conectado) {
+    const punto = connection.querySelector(".status-dot");
+    const texto = connection.querySelector(".status-text");
+
+    if (punto) {
+        punto.classList.toggle("active", conectado);
+    }
+
+    if (texto) {
+        texto.textContent = conectado ? "Conectado" : "Desconectado";
+    }
 }
 
-function getHumStatus(hum) {
-    if (hum < 40.0 || hum > 80.0) return { text: '¡Peligro!', color: '#e74c3c', barColor: '#e74c3c' };
-    if ((hum >= 40.0 && hum < 50.0) || (hum > 70.0 && hum <= 80.0)) return { text: 'Advertencia', color: '#f39c12', barColor: '#f39c12' };
-    return { text: 'Óptimo', color: '#27ae60', barColor: '#8f94fb' };
+
+// ==========================================
+// ESTADOS DE TEMPERATURA Y HUMEDAD
+// ==========================================
+
+function estadoTemperatura(temp) {
+    if (temp < 36 || temp > 39.5) {
+        return { texto: "¡Peligro!", color: "#ef4444" };
+    }
+
+    if (temp < 37 || temp > 38.5) {
+        return { texto: "Advertencia", color: "#f59e0b" };
+    }
+
+    return { texto: "Óptimo", color: "#22c55e" };
 }
 
-// ============================================
-// GRÁFICOS CHART.JS
-// ============================================
-function initCharts() {
-    const commonOptions = {
-        responsive: true,
-        maintainAspectRatio: false,
-        animation: { duration: 750, easing: 'easeOutQuart' },
-        plugins: {
-            legend: { display: false },
-            tooltip: { backgroundColor: 'rgba(0,0,0,0.8)', titleColor: '#fff', bodyColor: '#fff', cornerRadius: 8, displayColors: false }
-        },
-        scales: { x: { display: false }, y: { beginAtZero: false } }
-    };
 
-    const ctxTemp = document.getElementById('tempChart');
-    const ctxHum  = document.getElementById('humChart');
+function estadoHumedad(hum) {
+    if (hum < 40 || hum > 80) {
+        return { texto: "¡Peligro!", color: "#ef4444" };
+    }
 
-    if (!ctxTemp || !ctxHum) {
-        console.error("❌ No se encontraron los canvas de los gráficos");
+    if (hum < 50 || hum > 70) {
+        return { texto: "Advertencia", color: "#f59e0b" };
+    }
+
+    return { texto: "Óptimo", color: "#22c55e" };
+}
+
+
+// ==========================================
+// ACTUALIZAR TEMPERATURA Y HUMEDAD
+// ==========================================
+
+function actualizarDatos(data) {
+    if (!data || typeof data !== "object") return;
+
+    // Si llega un ID de dispositivo, verificar que sea el nuestro.
+    if (
+        data.device_id != null &&
+        normalizarId(data.device_id) !== deviceId
+    ) {
         return;
     }
 
-    tempChart = new Chart(ctxTemp.getContext('2d'), {
-        type: 'line',
-        data: {
-            labels: [],
-            datasets: [{
-                label: 'Temp', data: [],
-                borderColor: '#4e54c8', backgroundColor: 'rgba(78,84,200,0.1)',
-                borderWidth: 3, tension: 0.4, fill: true, pointRadius: 0
-            }]
-        },
-        options: { ...commonOptions, scales: { ...commonOptions.scales, y: { min: 30, max: 45 } } }
-    });
+    // Evitar procesar dos veces la misma lectura.
+    if (data.id != null) {
+        const idActual = String(data.id);
 
-    humChart = new Chart(ctxHum.getContext('2d'), {
-        type: 'line',
-        data: {
-            labels: [],
-            datasets: [{
-                label: 'Hum', data: [],
-                borderColor: '#8f94fb', backgroundColor: 'rgba(143,148,251,0.1)',
-                borderWidth: 3, tension: 0.4, fill: true, pointRadius: 0
-            }]
-        },
-        options: { ...commonOptions, scales: { ...commonOptions.scales, y: { min: 0, max: 100 } } }
-    });
-}
+        if (idActual === ultimoId) return;
 
-function pushChartData(temp, hum, timestamp) {
-    const lbl = new Date(timestamp).toLocaleTimeString('es-ES', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
-
-    if (tempChart.data.labels.length >= MAX_POINTS) {
-        tempChart.data.labels.shift();
-        tempChart.data.datasets[0].data.shift();
-    }
-    tempChart.data.labels.push(lbl);
-    tempChart.data.datasets[0].data.push(temp);
-    tempChart.update('none');
-
-    if (humChart.data.labels.length >= MAX_POINTS) {
-        humChart.data.labels.shift();
-        humChart.data.datasets[0].data.shift();
-    }
-    humChart.data.labels.push(lbl);
-    humChart.data.datasets[0].data.push(hum);
-    humChart.update('none');
-}
-
-// ============================================
-// ACTUALIZAR UI
-// pushToChart=false se usa al cargar histórico (los puntos ya están en el gráfico)
-// ============================================
-function updateUI(data, pushToChart = true) {
-    // Evita procesar dos veces la misma lectura (WebSocket + polling)
-    if (data.id !== undefined && data.id !== null) {
-        if (data.id === ultimoId) return;
-        ultimoId = data.id;
+        ultimoId = idActual;
     }
 
-    const t = parseFloat(data.temperatura);
-    const h = parseFloat(data.humedad);
+    const temperatura = Number(data.temperatura);
+    const humedad = Number(data.humedad);
 
-    tempValueEl.innerText = t.toFixed(1) + '°C';
-    const st = getTempStatus(t);
-    tempStatusEl.innerText = st.text;
-    tempStatusEl.style.color = st.color;
-    if (tempBar) { tempBar.style.width = Math.min(Math.max((t / 45) * 100, 0), 100) + '%'; tempBar.style.backgroundColor = st.barColor; }
+    // Verificar que los valores sean válidos.
+    if (
+        data.temperatura == null ||
+        data.humedad == null ||
+        !Number.isFinite(temperatura) ||
+        !Number.isFinite(humedad)
+    ) {
+        console.warn("Lectura inválida:", data);
+        return;
+    }
 
-    humValueEl.innerText = h.toFixed(1) + '%';
-    const sh = getHumStatus(h);
-    humStatusEl.innerText = sh.text;
-    humStatusEl.style.color = sh.color;
-    if (humBar) { humBar.style.width = Math.min(Math.max(h, 0), 100) + '%'; humBar.style.backgroundColor = sh.barColor; }
+    // Mostrar temperatura
+    tempValue.textContent = temperatura.toFixed(1) + "°C";
 
-    if (pushToChart) pushChartData(t, h, data.timestamp || new Date().toISOString());
+    const estadoTemp = estadoTemperatura(temperatura);
+
+    tempStatus.textContent = estadoTemp.texto;
+    tempStatus.style.color = estadoTemp.color;
+
+    // Mostrar humedad
+    humValue.textContent = humedad.toFixed(1) + "%";
+
+    const estadoHum = estadoHumedad(humedad);
+
+    humStatus.textContent = estadoHum.texto;
+    humStatus.style.color = estadoHum.color;
 }
 
-// ============================================
-// CARGAR HISTÓRICO POR HTTP (filtrado por device_id)
-// ============================================
-async function cargarHistorico() {
-    if (!MI_DEVICE_ID) return;
+
+// ==========================================
+// OBTENER ÚLTIMA LECTURA POR HTTP
+// ==========================================
+
+async function obtenerUltimaLectura() {
+    if (!deviceId) return;
+
+    const idConsultado = deviceId;
 
     try {
-        const res = await fetch(`${API_BASE}/api/lecturas/${MI_DEVICE_ID}?limit=${MAX_POINTS}`);
-        if (!res.ok) {
-            console.warn("API no responde (status:", res.status, ")");
-            return;
-        }
-        const json = await res.json();
-        if (!json.data || json.data.length === 0) {
-            console.log("ℹ️ Sin histórico para este dispositivo");
-            return;
-        }
+        const respuesta = await fetch(
+            `${API_BASE}/api/lecturas/ultima/${encodeURIComponent(idConsultado)}`
+        );
 
-        // Limpiar gráficos
-        tempChart.data.labels = []; tempChart.data.datasets[0].data = [];
-        humChart.data.labels = []; humChart.data.datasets[0].data = [];
+        if (!respuesta.ok) return;
 
-        json.data.forEach(l => {
-            const lbl = new Date(l.timestamp).toLocaleTimeString('es-ES', { hour12: false });
-            tempChart.data.labels.push(lbl);
-            tempChart.data.datasets[0].data.push(parseFloat(l.temperatura));
-            humChart.data.labels.push(lbl);
-            humChart.data.datasets[0].data.push(parseFloat(l.humedad));
-        });
+        const datos = await respuesta.json();
 
-        tempChart.update();
-        humChart.update();
-        updateUI(json.data[json.data.length - 1], false);
+        // Ignorar respuestas de una incubadora anterior.
+        if (idConsultado !== deviceId) return;
 
-    } catch (e) {
-        console.error("Error cargando histórico:", e);
+        actualizarDatos(datos);
+
+    } catch (error) {
+        console.warn("No se pudo obtener la última lectura:", error);
     }
 }
 
-// ============================================
-// POLLING DE RESPALDO (si el WebSocket cae o Render recién despertó)
-// ============================================
-async function pollUltima() {
-    if (!MI_DEVICE_ID) return;
-    try {
-        const res = await fetch(`${API_BASE}/api/lecturas/ultima/${MI_DEVICE_ID}`);
-        if (res.ok) updateUI(await res.json());
-    } catch (e) { /* silencioso: se reintenta en el próximo ciclo */ }
-}
 
-// ============================================
-// WEBSOCKET - Conexión y filtrado por device_id
-// ============================================
-function connectWebSocket() {
-    clearTimeout(wsTimer);
+// ==========================================
+// CONEXIÓN WEBSOCKET
+// ==========================================
+
+function conectarWebSocket() {
+    if (!deviceId) return;
+
+    clearTimeout(reconnectTimer);
+
+    // Cerrar una conexión anterior si existe.
     if (ws) {
-        // Quitar handlers antes de cerrar para no disparar reconexiones duplicadas
-        ws.onclose = null; ws.onerror = null; ws.onmessage = null; ws.onopen = null;
-        try { ws.close(); } catch (e) {}
+        ws.onopen = null;
+        ws.onmessage = null;
+        ws.onerror = null;
+        ws.onclose = null;
+
+        ws.close();
     }
 
-    console.log("🔌 Intentando WS en", WS_URL);
-    ws = new WebSocket(WS_URL);
+    mostrarConexion(false);
 
-    ws.onopen = () => {
-        console.log("✅ WebSocket conectado");
-        connectionEl.innerHTML = '<span class="status-dot active"></span><span>Sistema Conectado</span>';
-        connectionEl.classList.remove('alert');
+    const socket = new WebSocket(WS_URL);
+    ws = socket;
+
+    socket.onopen = () => {
+        if (socket !== ws) return;
+
+        console.log("WebSocket conectado");
+        mostrarConexion(true);
+
+        // Actualizar datos al conectar.
+        obtenerUltimaLectura();
     };
 
-    ws.onmessage = (event) => {
-        if (typeof event.data !== 'string') return;
+    socket.onmessage = event => {
+        if (socket !== ws) return;
+
+        if (typeof event.data !== "string") return;
         if (event.data === "pong") return;
 
         try {
-            const msg = JSON.parse(event.data);
+            const mensaje = JSON.parse(event.data);
 
-            // FILTRAR: solo procesar si es de MI incubadora
-            if (msg.type === 'lectura' && msg.data) {
-                if (normId(msg.data.device_id) !== MI_DEVICE_ID) return; // Ignorar otras incubadoras
-                updateUI(msg.data);
-            }
-            else if (msg.type === 'historico' && Array.isArray(msg.data)) {
-                // Filtrar el histórico por si acaso
-                const filtrado = msg.data.filter(l => normId(l.device_id) === MI_DEVICE_ID);
-                if (filtrado.length === 0) return;
-
-                tempChart.data.labels = []; tempChart.data.datasets[0].data = [];
-                humChart.data.labels = []; humChart.data.datasets[0].data = [];
-
-                filtrado.forEach(l => {
-                    const lbl = new Date(l.timestamp).toLocaleTimeString('es-ES', { hour12: false });
-                    tempChart.data.labels.push(lbl);
-                    tempChart.data.datasets[0].data.push(parseFloat(l.temperatura));
-                    humChart.data.labels.push(lbl);
-                    humChart.data.datasets[0].data.push(parseFloat(l.humedad));
-                });
-
-                tempChart.update(); humChart.update();
-                updateUI(filtrado[filtrado.length - 1], false);
+            // Nueva lectura enviada por el servidor.
+            if (mensaje.type === "lectura" && mensaje.data) {
+                actualizarDatos(mensaje.data);
             }
 
-        } catch (e) {
-            console.warn("WS mensaje no-JSON (ignorado):", event.data.substring(0, 50));
+            // Si el servidor envía un histórico,
+            // usar solamente la última lectura de nuestra incubadora.
+            if (
+                mensaje.type === "historico" &&
+                Array.isArray(mensaje.data)
+            ) {
+                const lecturas = mensaje.data.filter(
+                    lectura =>
+                        normalizarId(lectura.device_id) === deviceId
+                );
+
+                if (lecturas.length > 0) {
+                    actualizarDatos(lecturas[lecturas.length - 1]);
+                }
+            }
+
+        } catch (error) {
+            console.warn("Mensaje WebSocket no válido:", error);
         }
     };
 
-    ws.onerror = (err) => {
-        console.error("❌ WS Error:", err);
-        connectionEl.innerHTML = '<span class="status-dot"></span><span>Error de Conexión</span>';
-        connectionEl.classList.add('alert');
+    socket.onerror = () => {
+        if (socket !== ws) return;
+
+        mostrarConexion(false);
+        console.warn("Error de conexión WebSocket");
     };
 
-    ws.onclose = () => {
-        console.warn("🔌 WS cerrado. Reintentando en 3s...");
-        connectionEl.innerHTML = '<span class="status-dot"></span><span>Desconectado</span>';
-        connectionEl.classList.add('alert');
-        wsTimer = setTimeout(connectWebSocket, 3000);
+    socket.onclose = () => {
+        if (socket !== ws) return;
+
+        mostrarConexion(false);
+
+        console.log("WebSocket desconectado. Reintentando...");
+
+        // Intentar reconectar después de 3 segundos.
+        reconnectTimer = setTimeout(conectarWebSocket, 3000);
     };
 }
 
-// ============================================
-// VINCULACIÓN DE DISPOSITIVO
-// ============================================
+
+// ==========================================
+// VINCULAR INCUBADORA
+// ==========================================
+
 async function vincularDispositivo() {
-    const deviceId = normId(deviceIdInput.value);
-    if (!deviceId) {
-        vinculacionMsg.innerHTML = '<span style="color:#e74c3c;">❌ Ingresa un ID</span>';
+    const nuevoId = normalizarId(deviceIdInput.value);
+
+    if (!nuevoId) {
+        vinculacionMsg.textContent = "Ingresá el ID de tu incubadora.";
+        vinculacionMsg.style.color = "#ef4444";
         return;
     }
 
-    vinculacionMsg.innerHTML = '<span style="color:#f39c12;">⏳ Vinculando...</span>';
+    vinculacionMsg.textContent = "Conectando...";
+    vinculacionMsg.style.color = "#f59e0b";
 
     try {
-        const res = await fetch(`${API_BASE}/api/vincular`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ device_id: deviceId, nombre_usuario: null })
+        const respuesta = await fetch(`${API_BASE}/api/vincular`, {
+            method: "POST",
+
+            headers: {
+                "Content-Type": "application/json"
+            },
+
+            body: JSON.stringify({
+                device_id: nuevoId,
+                nombre_usuario: null
+            })
         });
 
-        if (res.ok) {
-            localStorage.setItem('ovotech_device_id', deviceId);
-            vinculacionMsg.innerHTML = '<span style="color:#2ecc71;">✅ ¡Vinculado! Entrando...</span>';
-            setTimeout(() => location.reload(), 800);
+        if (!respuesta.ok) {
+            let mensajeError = "No se pudo vincular la incubadora.";
+
+            try {
+                const error = await respuesta.json();
+
+                if (typeof error.detail === "string") {
+                    mensajeError = error.detail;
+                } else if (Array.isArray(error.detail)) {
+                    mensajeError = error.detail
+                        .map(item => item.msg || "Error de validación")
+                        .join(", ");
+                }
+
+            } catch (e) {
+                mensajeError = `Error HTTP ${respuesta.status}`;
+            }
+
+            vinculacionMsg.textContent = mensajeError;
+            vinculacionMsg.style.color = "#ef4444";
+
             return;
         }
 
-        // Si no es ok, intentar leer el error
-        let errorText = '';
-        try {
-            const errData = await res.json();
-            console.error("Error del servidor:", errData);
+        // Guardar el dispositivo vinculado.
+        localStorage.setItem("ovotech_device_id", nuevoId);
+        deviceId = nuevoId;
 
-            // FastAPI devuelve {detail: "mensaje"} o {detail: [{msg: "..."}]}
-            if (errData.detail) {
-                if (Array.isArray(errData.detail)) {
-                    errorText = errData.detail.map(e => e.msg || JSON.stringify(e)).join(', ');
-                } else {
-                    errorText = String(errData.detail);
-                }
-            } else {
-                errorText = JSON.stringify(errData);
-            }
-        } catch {
-            errorText = `HTTP ${res.status}: ${res.statusText}`;
-        }
+        vinculacionMsg.textContent = "¡Incubadora vinculada!";
+        vinculacionMsg.style.color = "#22c55e";
 
-        vinculacionMsg.innerHTML = `<span style="color:#e74c3c;">❌ Error: ${errorText}</span>`;
+        // Entrar al panel sin recargar la página.
+        mostrarPanel();
 
-    } catch (e) {
-        console.error(e);
-        vinculacionMsg.innerHTML = '<span style="color:#e74c3c;">❌ No se pudo conectar al servidor. ¿Está corriendo el backend?</span>';
+    } catch (error) {
+        console.error("Error al vincular:", error);
+
+        vinculacionMsg.textContent =
+            "No se pudo conectar con el servidor. Intentá nuevamente.";
+
+        vinculacionMsg.style.color = "#ef4444";
     }
 }
+
+
+// ==========================================
+// CAMBIAR DE INCUBADORA
+// ==========================================
 
 function desvincularDispositivo() {
-    if (!confirm('¿Seguro que querés cambiar de incubadora?')) return;
-    localStorage.removeItem('ovotech_device_id');
-    location.reload();
-}
+    const confirmar = confirm(
+        "¿Querés cambiar de incubadora?"
+    );
 
-// ============================================
-// INICIAR DASHBOARD
-// ============================================
-function iniciarDashboard() {
-    console.log("🚀 Dashboard iniciado para:", MI_DEVICE_ID);
+    if (!confirmar) return;
 
-    // Mostrar ID en algún lugar (opcional, si tenés un elemento con id="miDeviceId")
-    const miDeviceEl = document.getElementById('miDeviceId');
-    if (miDeviceEl) miDeviceEl.innerText = MI_DEVICE_ID;
+    localStorage.removeItem("ovotech_device_id");
 
-    initCharts();
-    cargarHistorico();
-    connectWebSocket();
+    deviceId = "";
+    ultimoId = null;
 
-    // Respaldo por polling cada 5 s
+    clearTimeout(reconnectTimer);
     clearInterval(pollTimer);
-    pollTimer = setInterval(pollUltima, 5000);
 
-    // Al volver a la pestaña: refrescar y reconectar el WS si hace falta
-    document.addEventListener('visibilitychange', () => {
-        if (document.hidden) return;
-        pollUltima();
-        if (!ws || ws.readyState !== WebSocket.OPEN) connectWebSocket();
-    });
-}
+    if (ws) {
+        ws.onopen = null;
+        ws.onmessage = null;
+        ws.onerror = null;
+        ws.onclose = null;
 
-// ============================================
-// INICIO - Decidir qué pantalla mostrar
-// ============================================
-document.addEventListener('DOMContentLoaded', () => {
-    if (!pantallaVinculacion || !pantallaPrincipal) {
-        console.error("❌ Faltan elementos pantalla-vinculacion o pantalla-principal en el HTML");
-        return;
+        ws.close();
+        ws = null;
     }
 
-    if (MI_DEVICE_ID) {
-        // Ya vinculado: mostrar dashboard
-        pantallaVinculacion.style.display = 'none';
-        pantallaPrincipal.style.display = 'block';
-        iniciarDashboard();
+    mostrarConexion(false);
+
+    tempValue.textContent = "--.-°C";
+    humValue.textContent = "--.-%";
+
+    tempStatus.textContent = "Esperando datos...";
+    humStatus.textContent = "Esperando datos...";
+
+    tempStatus.style.color = "";
+    humStatus.style.color = "";
+
+    pantallaPrincipal.style.display = "none";
+    pantallaVinculacion.style.display = "flex";
+
+    deviceIdInput.value = "";
+    vinculacionMsg.textContent = "";
+
+    deviceIdInput.focus();
+}
+
+
+// ==========================================
+// MOSTRAR PANEL PRINCIPAL
+// ==========================================
+
+function mostrarPanel() {
+    pantallaVinculacion.style.display = "none";
+    pantallaPrincipal.style.display = "block";
+
+    const miDeviceId = document.getElementById("miDeviceId");
+    const footerDevice = document.getElementById("footer-device");
+
+    if (miDeviceId) {
+        miDeviceId.textContent = deviceId;
+    }
+
+    if (footerDevice) {
+        footerDevice.textContent = deviceId;
+    }
+
+    ultimoId = null;
+
+    // Cargar la última lectura.
+    obtenerUltimaLectura();
+
+    // Conectar al servidor en tiempo real.
+    conectarWebSocket();
+
+    // Consulta de respaldo cada 5 segundos.
+    clearInterval(pollTimer);
+
+    pollTimer = setInterval(obtenerUltimaLectura, 5000);
+}
+
+
+// ==========================================
+// INICIAR PÁGINA
+// ==========================================
+
+document.addEventListener("DOMContentLoaded", () => {
+
+    if (deviceId) {
+        mostrarPanel();
     } else {
-        // Sin vincular: mostrar formulario
-        pantallaVinculacion.style.display = 'block';
-        pantallaPrincipal.style.display = 'none';
+        pantallaVinculacion.style.display = "flex";
+        pantallaPrincipal.style.display = "none";
+
         deviceIdInput.focus();
     }
+
+    // Permitir vincular presionando Enter.
+    deviceIdInput.addEventListener("keydown", event => {
+        if (event.key === "Enter") {
+            vincularDispositivo();
+        }
+    });
+
+    // Al volver a la pestaña, actualizar los datos.
+    document.addEventListener("visibilitychange", () => {
+        if (document.hidden || !deviceId) return;
+
+        obtenerUltimaLectura();
+
+        if (!ws || ws.readyState === WebSocket.CLOSED) {
+            conectarWebSocket();
+        }
+    });
+
 });
